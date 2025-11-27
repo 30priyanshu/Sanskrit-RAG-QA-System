@@ -21,7 +21,7 @@ def chunk_texts(texts, max_length=300):
         paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
         for para in paragraphs:
             for i in range(0, len(para), max_length):
-                chunk = para[i:i+max_length]
+                chunk = para[i:i + max_length]
                 if len(chunk) > 30:
                     chunks.append(chunk)
     return chunks
@@ -44,11 +44,28 @@ def retrieve(query, vectorizer, emb, chunks, top_k=3):
 generator = pipeline("text-generation", model="distilgpt2")
 
 def generate_answer(context_chunks, user_query):
-    """Generates an answer given relevant context chunks and a user query."""
+    """Generate a short, clean answer (without showing prompt/context)."""
     context = "\n".join(context_chunks)
-    prompt = f"Answer this question based on the following context:\n{context}\nQuestion: {user_query}\nAnswer:"
-    result = generator(prompt, max_length=60, num_return_sequences=1)
-    return result[0]['generated_text']
+    prompt = (
+        "You are a concise assistant for Sanskrit stories.\n"
+        "Answer in simple Hindi or English in 1-2 lines using ONLY the context.\n"
+        "If the answer is not in the context, say you don't know.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {user_query}\n"
+        "Answer: "
+    )
+
+    # Generate: prompt + answer, then cut off the prompt part
+    result = generator(
+        prompt,
+        max_length=len(prompt) + 80,   # prompt length + ~80 chars answer
+        num_return_sequences=1,
+        do_sample=False,
+        temperature=0.3,
+    )
+    full_text = result[0]["generated_text"]
+    answer_only = full_text[len(prompt):].strip()
+    return answer_only
 
 # --- PIPELINE CONSTRUCTOR: For import and testing ---
 def build_pipeline(data_dir="../data", chunk_size=300):
@@ -70,12 +87,16 @@ def main():
         query = input("Enter question (or 'exit'): ")
         if query.lower().strip() == "exit":
             break
+
         top_chunks = retrieve(query, vectorizer, emb, chunks)
         chunk_texts_only = [c for c, score in top_chunks]
-        print("\nTop relevant chunks:\n", "\n---\n".join(chunk_texts_only))
+
+        # Debug ke liye chunks dekhne hain to neeche line uncomment kar sakte ho:
+        # print("\nTop relevant chunks:\n", "\n---\n".join(chunk_texts_only))
+
         answer = generate_answer(chunk_texts_only, query)
-        print("\nGenerated answer:\n", answer)
-        print("\n" + "="*40)
+        print("\nAnswer:\n", answer)
+        print("\n" + "=" * 40)
 
 if __name__ == "__main__":
     main()
